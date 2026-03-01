@@ -1,0 +1,51 @@
+# ============================================================
+# EOL Test Platform — Python Dependencies
+# Author: Vipin Parmar | R&D Engineer
+# ============================================================
+
+# ── GUI Framework ────────────────────────────────────────────
+PyQt6>=6.5.0
+PyQt6-Qt6>=6.5.0
+PyQt6-sip>=13.5.0
+
+# ── Serial Communication ─────────────────────────────────────
+pyserial>=3.5
+
+# ── Industrial Hardware (NI-DAQ) ─────────────────────────────
+# IMPORTANT: NI-DAQmx driver must be installed separately from:
+# https://www.ni.com/en/support/downloads/drivers/download.ni-daq-mx.html
+nidaqmx>=0.9.0
+
+# ── Instrument Control (PyVISA) ──────────────────────────────
+# Controls Keysight PSU via TCP/IP SCPI commands
+pyvisa>=1.13.0
+pyvisa-py>=0.7.0         # Pure-Python VISA backend (fallback)
+
+# ── Industrial Protocols ─────────────────────────────────────
+pymodbus>=3.5.0           # Modbus RTU over RS-485 (dB meter)
+
+# ── Report Generation ────────────────────────────────────────
+reportlab>=4.0.0          # PDF report generation (A3 landscape)
+openpyxl>=3.1.0           # Excel report generation (.xlsx)
+
+# ── Machine Vision (Optional — for YOLOv8 integration) ───────
+# Uncomment if using vision inspection features
+# ultralytics>=8.0.0      # YOLOv8 object detection
+# opencv-python>=4.8.0    # Image processing
+# easyocr>=1.7.0          # OCR for label validation
+# torch>=2.0.0            # PyTorch backend for YOLOv8
+
+# ── Utilities ────────────────────────────────────────────────
+Pillow>=10.0.0            # Image handling in reports
+
+# ============================================================
+# INSTALLATION:
+#   pip install -r requirements.txt
+#
+# For NI-DAQmx hardware support:
+#   1. Install NI-DAQmx driver from ni.com
+#   2. Then: pip install nidaqmx
+#
+# Platform: Windows 10/11 (required for NI-DAQmx)
+# Python:   3.10+ recommended
+# ============================================================
