@@ -291,7 +291,7 @@ This platform has been deployed and validated in production:
 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-vipin--parmar-0A66C2?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/vipin-parmar-aa9360214)
 [![Email](https://img.shields.io/badge/Email-parmarvipin17@gmail.com-EA4335?style=flat-square&logo=gmail)](mailto:parmarvipin17@gmail.com)
-[![Phone](https://img.shields.io/badge/Phone-+91 79880 46490-25D366?style=flat-square&logo=whatsapp)](tel:+917988046490)
+
 
 ---
 
