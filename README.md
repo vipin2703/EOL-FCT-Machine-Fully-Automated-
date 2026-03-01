@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![PyQt6](https://img.shields.io/badge/PyQt6-GUI-41CD52?style=for-the-badge&logo=qt&logoColor=white)
 ![NI-DAQmx](https://img.shields.io/badge/NI--DAQmx-Hardware-FFD700?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
@@ -32,7 +32,7 @@
 
 ### 🔌 Multi-Device Hardware Integration
 - **Serial Communication** — Real-time ECALL & DASHCAM device testing via PySerial (HEX/ASCII protocol)
-- **NI-DAQmx Digital I/O** — USB-6501 / PCIe-6509 control for relay switching, conveyor triggers & sensor interfacing
+- **NI-DAQmx Digital I/O** — USB-6501 control for relay switching, pneumetic cylinder moment & sensor interfacing
 - **Keysight PSU Control** — PyVISA-based automated voltage/current setting with live status monitoring
 - **Modbus RTU dB Meter** — Industrial noise level measurement with CRC16 Modbus frame parsing
 - **Ethernet Camera Integration** — TCP socket-based camera communication for vision test triggers
