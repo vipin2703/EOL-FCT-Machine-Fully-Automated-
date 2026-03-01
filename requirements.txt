@@ -3,7 +3,7 @@
 # Author: Vipin Parmar | R&D Engineer
 # ============================================================
 # ── Pip Install ────────────────────────────────────────────
-pip install Pyqt6 pyvisa nidaqmx pyserial pymodbus 
+pip install Pyqt6 pyvisa nidaqmx pyserial pymodbus reportlab openpyxl 
 
 # ── GUI Framework ────────────────────────────────────────────
 PyQt6>=6.5.0
