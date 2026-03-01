@@ -1,0 +1,13 @@
+{
+  "_comment": "Copy this file to com_settings.json and fill in your actual values",
+  "ecall_com": "COM3",
+  "dashcam_com": "COM4",
+  "db_meter_com": "COM5",
+  "feasa_com": "COM6",
+  "camera_ip": "192.168.x.x",
+  "camera_port": "5000",
+  "psu_ip": "192.168.x.x",
+  "ni_device_1_serial_hex": "XXXXXXXX",
+  "ni_device_2_serial_hex": "XXXXXXXX",
+  "ni_device_3_serial_hex": "XXXXXXXX"
+}
