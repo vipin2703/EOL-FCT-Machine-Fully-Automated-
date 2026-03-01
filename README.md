@@ -1,11 +1,10 @@
-# 🏭 EOL Test Platform — Industrial Automation Suite
+#  EOL Test Platform — Industrial Automation Suite
 
 <div align="center">
 
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![PyQt6](https://img.shields.io/badge/PyQt6-GUI-41CD52?style=for-the-badge&logo=qt&logoColor=white)
 ![NI-DAQmx](https://img.shields.io/badge/NI--DAQmx-Hardware-FFD700?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Production--Ready-brightgreen?style=for-the-badge)
 
 **A production-grade End-of-Line (EOL) automated testing framework built for Dashcam and E-Call device manufacturing lines.**
@@ -179,8 +178,9 @@ python main.py
 
 ### Default Credentials
 ```
-Username: Admin
-Password: Admin@123
+Username: 1
+Login Password: 1
+Admin Password: Admin@123
 ```
 > ⚠️ Change the admin password immediately after first login via the Register panel.
 
