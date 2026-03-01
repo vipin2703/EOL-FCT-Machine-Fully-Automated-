@@ -20,11 +20,11 @@
 
 | Login Screen | Device Configuration | Barcode Entry |
 |:---:|:---:|:---:|
-| ![Login](screenshots/login.png) | ![Config](screenshots/com_port.png) | ![Barcode](screenshots/barcode.png) |
+| ![Login](screenshots/login.png) | ![Config](screenshots/comport_screen.png) | ![Barcode](screenshots/barcodescreen.png) |
 
 | Main Command Panel | PSU Controller |
 |:---:|:---:|
-| ![Dashboard](screenshots/dashboard.png) | ![PSU](screenshots/psu_controller.png) |
+| ![Dashboard](screenshots/main_screen.png) | ![PSU](screenshots/psu_control.png) |
 
 ---
 
