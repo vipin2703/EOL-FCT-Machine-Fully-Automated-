@@ -163,7 +163,7 @@ eol-test-platform/
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/vipin-parmar/eol-test-platform.git
+git clone https://github.com/vipin2703/EOL-FCT-Machine-Fully-Automated-.git
 cd eol-test-platform
 
 # 2. Install dependencies
