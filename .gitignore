@@ -1,0 +1,51 @@
+# ============================================================
+# EOL Test Platform — .gitignore
+# ============================================================
+
+# ── Sensitive Configuration (NEVER commit these) ─────────────
+com_settings.json          # Contains real COM ports, IP addresses
+users.json                 # Contains usernames and passwords
+counters.json              # Runtime state (can be regenerated)
+
+# ── Generated Reports (device-specific data) ─────────────────
+*.pdf
+*.xlsx
+*.xls
+reports/
+
+# ── Python Cache ─────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Virtual Environment ──────────────────────────────────────
+venv/
+env/
+.venv/
+ENV/
+
+# ── PyInstaller / Build Artifacts ────────────────────────────
+dist/
+build/
+*.spec
+*.exe
+
+# ── IDE Files ────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Test Output ──────────────────────────────────────────────
+test_output/
+temp/
