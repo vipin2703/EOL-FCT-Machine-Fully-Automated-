@@ -276,7 +276,7 @@ This platform has been deployed and validated in production:
 
 ## 🗺️ Roadmap
 
-- [ ] OPC-UA integration for MES/SCADA connectivity  
+- [ ] API integration for MES  
 - [ ] ONNX/TensorRT model deployment for edge vision inference  
 - [ ] Docker containerization for easy deployment  
 - [ ] REST API layer for remote test triggering  
