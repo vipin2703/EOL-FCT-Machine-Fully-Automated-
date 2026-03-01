@@ -295,9 +295,7 @@ This platform has been deployed and validated in production:
 
 ---
 
-## 📄 License
 
-This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
 
 > **Note:** Hardware-specific configurations (COM ports, IP addresses, NI device serials) are intentionally excluded from this repository. Use `settings_template.json` as a starting point.
 
