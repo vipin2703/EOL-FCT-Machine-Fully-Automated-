@@ -201,7 +201,8 @@ All hardware settings are stored in `com_settings.json` (created on first run):
   "psu_ip": "192.168.x.x",
   "ni_device_1_serial_hex": "XXXXXXXX",
   "ni_device_2_serial_hex": "XXXXXXXX",
-  "ni_device_3_serial_hex": "XXXXXXXX"
+  "ni_device_3_serial_hex": "XXXXXXXX",
+  "EOL_Number": "EOL-1",
 }
 ```
 
