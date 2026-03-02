@@ -98,7 +98,6 @@ TEST_CASES = [
      "input_cmd": " AA 43 02 01 01 EB ", "expected": "AA", "delay": 1},
 
 
-
      {
   "name": "Sutter Open",
   "background_cmd": "DAQ_ONLY", 
@@ -116,7 +115,7 @@ ser_dashcam = None
 serfeasa = None
 ser_dbmeter = None
 
-
+eol_number = None
 
 # ---- Power Supply Globals ----
 psu_rm = None
@@ -211,8 +210,6 @@ def read_serial_response(ser: serial.Serial, timeout_s: float | None) -> str | N
         if timeout_s is not None and (time.time() - start) >= timeout_s:
             return None
         time.sleep(0.05)
-
-
 
 def read_serial_response_exit(
     ser: serial.Serial,
@@ -568,7 +565,31 @@ def niusb_set_low(serial_hex: str, port: int, line: int) -> bool:
         print(f"NIUSB Set LOW Error: {e}")
         return False
 
+def niusb_set_high(serial_hex: str, port: int, line: int) -> bool:
+    """
+    Sets NI USB-6501 line to LOW and keeps it LOW.
+    HIGH pe switch nahi karega.
+    """
+    try:
+        serial_decimal = int(serial_hex, 16)
+        system = System.local()
+        dev = next((d for d in system.devices if getattr(d, "serial_num", None) == serial_decimal), None)
 
+        if not dev:
+            print(f"❌ Device with serial {serial_hex} (DEC {serial_decimal}) not found")
+            return False
+
+        line_name = f"{dev.name}/port{port}/line{line}"
+        with nidaqmx.Task() as task:
+            task.do_channels.add_do_chan(line_name)
+            task.write(True)  # LOW pe set
+            print(f"[SET High] {line_name} -> High")
+
+        return True
+
+    except Exception as e:
+        print(f"NIUSB Set LOW Error: {e}")
+        return False
 
 
 
@@ -580,33 +601,13 @@ class EntryTimeoutException(Exception):
 
 from PyQt6.QtCore import QTimer
 
-# def run_all_tests(table: QTableWidget, status_label: QLabel, window_obj: "MainScreen", main_window=None):
-#     stop_event.clear()
-#     try:
-#         for idx, case in enumerate(TEST_CASES):
-#             if stop_event.is_set():
-#                 table.setItem(idx, 4, QTableWidgetItem("STOPPED"))
-#                 break
-#             run_test_case(idx, table, status_label)
-#     except EntryTimeoutException:
-#         print("ENTRY failed → EXIT executed → stopping further tests.")
 
-#     finally:
-#         status_label.setText("All tests completed.")
-#         generate_report(table)
-#         generate_excel(table)
-#         finalize_run(table, window_obj)
-#         print("after finalize come")
-#         stop_event.clear()
-
-#         # Safely switch to barcode screen on main thread
-#         if main_window is not None:
-#             QTimer.singleShot(0, main_window.open_barcode_screen)
-#         else:
-#             print("main_window is None; barcode screen not opened")
 
 def run_all_tests(table: QTableWidget, status_label: QLabel, window_obj: "MainScreen", main_window=None):
     stop_event.clear()
+    niusb_set_low(ni_device_1, port=2, line=5)
+    niusb_set_high(ni_device_1, port=2, line=2)
+    niusb_set_high(ni_device_1, port=2, line=3)
     try:
         for idx, case in enumerate(TEST_CASES):
             if stop_event.is_set():
@@ -637,6 +638,7 @@ def run_all_tests(table: QTableWidget, status_label: QLabel, window_obj: "MainSc
 
         print("after finalize come")
         stop_event.clear()
+        
         
         # Safely show overall banner on main thread (if available), which will open barcode after duration
         if main_window is not None:
@@ -692,6 +694,7 @@ def run_test_case(idx: int, table: QTableWidget, status_var: QLabel, is_exit=Fal
     # --- DB meter extras ---
     dbmeter_cmd = case.get("dbmeter_cmd")
     dbmeter_delay = float(case.get("dbmeter_delay", 1.5))
+    # dbmeter_delay = case.get("dbmeter_delay")
     dbmeter_checks = case.get("dbmeter_checks")  # None OR list of dicts
 
     daq_info = case.get("daq_steps")
@@ -766,12 +769,6 @@ def run_test_case(idx: int, table: QTableWidget, status_var: QLabel, is_exit=Fal
             elif case.get("name") == "Mic Speaker Loop Start" and is_daq_case and daq_info:
                 # Step 1: pehle command bhejo
                 send_hex(channel, input_cmd)
-                print("[INFO] Dashcam/Ecall command sent (special case:mic speaker loop)")
-                time.sleep(2)
-                first_step = daq_info[0]
-                wait_time = first_step.get("wait", 0)
-                niusb_write_line(first_step["serial"], first_step["port"], first_step["line"], pulse=True, wait=wait_time)
-                print(f"[INFO] First DAQ pulse sent: {first_step['serial']}/{first_step['port']}/{first_step['line']}")
 
             elif case.get("name") == "Get data x-axis" and is_daq_case and daq_info:
                 # Step 1: pehle command bhejo
@@ -865,41 +862,76 @@ def run_test_case(idx: int, table: QTableWidget, status_var: QLabel, is_exit=Fal
                     table.setItem(table_item_row, 4, QTableWidgetItem("FAIL ❌ (DB parse error)"))
                     return
         
+            # else:
+            ########------------------------->>>>>>>>>>>>>db meter
             else:
-                # Multi-step DB meter checks (Modbus)
                 print("enter ")
                 overall_pass = True
-                for check in dbmeter_checks:
-                    if stop_event.is_set():
-                        table.setItem(table_item_row, 4, QTableWidgetItem("STOPPED"))
-                        return
-        
-                    time.sleep(check.get("after", 0.5))
-                    try:
-                        raw_resp = dbmeter_write_and_read(ser_dbmeter)
-                        db_val = parse_db_value(raw_resp)
-                        label = check.get("label", "DB")
-                        min_val_step = check.get("min")
-                        max_val_step = check.get("max")
-        
-                        output_parts.append(f"{label}: {db_val:.2f} dB")
-        
-                        step_pass = True
-                        if min_val_step is not None and max_val_step is not None:
-                            step_pass = min_val_step <= db_val <= max_val_step
-                        overall_pass = overall_pass and step_pass
-        
-                    except Exception as pe:
-                        output_parts.append(f"{label}: PARSE ERROR ({pe})")
-                        overall_pass = False
-        
-                # ✅ Final output
+                # output_parts = []
+            
+                # ---------- STEP 1: First DB meter check (Speaker) ----------
+                first_check = dbmeter_checks[0]   # {"label": "Speaker", ...}
+                
+                time.sleep(first_check.get("after", 0.5))
+            
+                try:
+                    raw_resp = dbmeter_write_and_read(ser_dbmeter)
+                    db_val = parse_db_value(raw_resp)
+            
+                    label = first_check.get("label", "DB")
+                    min_val_step = first_check.get("min")
+                    max_val_step = first_check.get("max")
+            
+                    output_parts.append(f"{label}: {db_val:.2f} dB")
+            
+                    step_pass = min_val_step <= db_val <= max_val_step
+                    overall_pass = overall_pass and step_pass
+            
+                except Exception as pe:
+                    output_parts.append(f"{label}: PARSE ERROR ({pe})")
+                    overall_pass = False
+            
+            
+                # ---------- STEP 2: DAQ STEP RUN ----------
+                if is_daq_case and daq_info:
+                    first_step = daq_info[0]
+                    wait_time = first_step.get("wait", 0)
+            
+                    niusb_write_line(
+                        first_step["serial"],
+                        first_step["port"],
+                        first_step["line"],
+                        pulse=True,
+                        wait=wait_time
+                    )
+            
+                # ---------- STEP 3: Second DB meter check (Mic) ----------
+                second_check = dbmeter_checks[1]  # {"label": "Mic", ...}
+            
+                time.sleep(second_check.get("after", 0.5))
+            
+                try:
+                    raw_resp = dbmeter_write_and_read(ser_dbmeter)
+                    db_val = parse_db_value(raw_resp)
+            
+                    label = second_check.get("label", "DB")
+                    min_val_step = second_check.get("min")
+                    max_val_step = second_check.get("max")
+            
+                    output_parts.append(f"{label}: {db_val:.2f} dB")
+            
+                    step_pass = min_val_step <= db_val <= max_val_step
+                    overall_pass = overall_pass and step_pass
+            
+                except Exception as pe:
+                    output_parts.append(f"{label}: PARSE ERROR ({pe})")
+                    overall_pass = False
+            
+                print(output_parts)
+                # ---------- FINAL OUTPUT ----------
                 table.setItem(table_item_row, 2, QTableWidgetItem(" | ".join(output_parts)))
                 table.setItem(table_item_row, 4, QTableWidgetItem("PASS ✅" if overall_pass else "FAIL ❌"))
                 return
-
-
-
 
 
         # ---------- Response Loop ----------
@@ -1026,15 +1058,6 @@ def run_test_case(idx: int, table: QTableWidget, status_var: QLabel, is_exit=Fal
                     return
 
 
-
-
-
-
-
-
-
-
-
             if resp_hex:
                 response_received = True
                 buffer_hex_strings.append(resp_hex)
@@ -1117,27 +1140,60 @@ def run_test_case(idx: int, table: QTableWidget, status_var: QLabel, is_exit=Fal
                                 return
 
 
+
                         else:
                             try:
                                 response = ascii_str.strip()
-                                
-                                if response.startswith(expected):
-                                    table.setItem(table_item_row, 4, QTableWidgetItem("PASS ✅"))
+                        
+                                # ===== IMEI SPECIAL Handling =====
+                                if name.upper() == "READ_IMEI NUMBER":
+                        
+                                    # Example Response:  B3 10 86 866693080067627
+                                    # 1) Prefix Match check (Hex Part)
+                                    if not response.startswith(expected):
+                                        table.setItem(table_item_row, 4, QTableWidgetItem(f"FAIL ❌ (Prefix mismatch: {response})"))
+                                        return
+                        
+                                    # 2) Remove prefix then extract IMEI digits
+                                    # Remove the expected hex part from response
+                                    remaining_part = response[len(expected):].strip()
+                        
+                                    # Extract only digits of IMEI
+                                    imei_from_response = ''.join(filter(str.isdigit, remaining_part))
+                        
+                                    # 3) Expected IMEI from ECALL_BARCODE (first 15 digits)
+                                    imei_expected = ECALL_BARCODE[:15] if len(ECALL_BARCODE) >= 15 else ECALL_BARCODE
+                        
+                                    # Show IMEI in table
+                                    # table.setItem(table_item_row, 2, QTableWidgetItem(imei_from_response))
+                                    hex_from_response = response[:len(expected)]
+
+                                    display_text = f"IMEI: {imei_from_response}  HEX: {hex_from_response}"
+                                    table.setItem(table_item_row, 2, QTableWidgetItem(display_text))
+
+                        
+                                    # 4) Compare IMEI digits
+                                    if imei_from_response == imei_expected:
+                                        table.setItem(table_item_row, 4, QTableWidgetItem("PASS ✅"))
+                                    else:
+                                        table.setItem(table_item_row, 4, QTableWidgetItem(f"FAIL ❌ (IMEI Mismatch: {imei_from_response})"))
+                        
+                                    return  # exit after IMEI case
+                        
+                                # ===== NORMAL CASE (Non IMEI) =====
                                 else:
-                                    table.setItem(table_item_row, 4, QTableWidgetItem(f"FAIL ❌ (Prefix mismatch: {response})"))
+                                    if response.startswith(expected):
+                                        table.setItem(table_item_row, 4, QTableWidgetItem("PASS ✅"))
+                                    else:
+                                        table.setItem(table_item_row, 4, QTableWidgetItem(f"FAIL ❌ (Prefix mismatch: {response})"))
+                        
                             except Exception as e:
                                 table.setItem(table_item_row, 4, QTableWidgetItem(f"FAIL ❌ (Error: {e})"))
-                                # ---- DAQ cleanup pulse (if defined) ----
-                            # if is_daq_case and daq_info is not None and len(daq_info) > 1:
-                            #     print("enter in no response (sending second DAQ pulse)")
-                            #     second_step = daq_info[1]
-                            #     niusb_write_line(
-                            #         second_step["serial"],
-                            #         second_step["port"],
-                            #         second_step["line"],
-                            #         pulse=True
-                            #     )
-                            #     print(f"[INFO] Second DAQ pulse sent: {second_step['serial']}/{second_step['port']}/{second_step['line']}")
+
+
+
+
+
                             return
 
 
@@ -1245,35 +1301,6 @@ def run_test_case(idx: int, table: QTableWidget, status_var: QLabel, is_exit=Fal
                 # Optional: call your report generation or barcode screen reset here
                 raise EntryTimeoutException()
 
-
-            # ===== Special Retry ONLY for WIFI MAC =====
-            if name.upper() == "GET WIFI MAC ID":
-
-                # Initialize retry_count if missing
-                case["retry_count"] = case.get("retry_count", 0) + 1
-                
-                if case["retry_count"] <= 3:     # Try max 3 times
-                    print(f"[RETRY] WIFI MAC Timeout → Retrying {case['retry_count']}/3 ...")
-
-                    # Send the command again
-                    send_hex(channel, input_cmd)
-                    time.sleep(1)
-
-                    # ⚡ Re-run SAME TEST CASE again
-                    run_test_case(idx, table, status_var)
-                    return  # Important
-
-                else:
-                    print("[FAIL] WIFI MAC failed after 3 retries")
-                    table.setItem(table_item_row, 2, QTableWidgetItem("NO RESPONSE"))
-                    table.setItem(table_item_row, 4, QTableWidgetItem("FAIL ❌ (Timeout)"))
-                    return   # Final failure
-
-
-
-
-
-
             # ===== NORMAL TIMEOUT CASE =====
             else:
                 # For HEX-based tests
@@ -1289,6 +1316,35 @@ def run_test_case(idx: int, table: QTableWidget, status_var: QLabel, is_exit=Fal
                     table.setItem(table_item_row, 2, QTableWidgetItem(resp_all_hex))
                     # table.setItem(table_item_row, 2, QTableWidgetItem("[NO RESPONSE]"))
                     table.setItem(table_item_row, 4, QTableWidgetItem("FAIL ❌ "))
+
+
+                    # ===== Special Retry ONLY for WIFI MAC =====
+                    if name.upper() == "GET WIFI MAC ID":
+                
+                        # Initialize retry_count if missing
+                        case["retry_count"] = case.get("retry_count", 0) + 1
+                        
+                        if case["retry_count"] <= 3:     # Try max 3 times
+                            print(f"[RETRY] WIFI MAC Timeout → Retrying {case['retry_count']}/3 ...")
+                
+                            # Send the command again
+                            send_hex(channel, input_cmd)
+                            time.sleep(1)
+                
+                            # ⚡ Re-run SAME TEST CASE again
+                            run_test_case(idx, table, status_var)
+                            return  # Important
+                
+                        else:
+                            print("[FAIL] WIFI MAC failed after 3 retries")
+                            table.setItem(table_item_row, 2, QTableWidgetItem("NO RESPONSE"))
+                            table.setItem(table_item_row, 4, QTableWidgetItem("FAIL ❌ (Timeout)"))
+                            return   # Final failure
+
+
+
+
+
 
                 # ---- DAQ cleanup pulse (if defined) ----
                 if is_daq_case and daq_info is not None and len(daq_info) > 1:
@@ -1366,7 +1422,7 @@ def generate_report(table_widget):
                 break
 
         # --- Directory Structure ---
-        base_dir = r"D:\Report"
+        base_dir = r"D:\VIPIN"
         current_year = datetime.now().strftime("%Y")
         current_month = datetime.now().strftime("%m")
 
@@ -1401,7 +1457,7 @@ def generate_report(table_widget):
             logo_path = None
 
         status_bg_color = colors.HexColor("#92d050") if overall_result == "PASS" else colors.HexColor("#FF4747")
-        EOL_NAME = "EOL-4"
+        EOL_NAME = eol_number
 
         header_table_data = [
             [
@@ -1612,7 +1668,7 @@ def generate_excel(table_widget):
                 break
 
         # Prepare directories dynamically based on year/month
-        base_dir = r"D:\Report"
+        base_dir = r"D:\VIPIN"
         current_year = datetime.now().strftime("%Y")
         current_month = datetime.now().strftime("%m")
 
@@ -1710,7 +1766,7 @@ def generate_excel(table_widget):
         ws["D4"].alignment = left_align
 
         ws.merge_cells("D5:F6")
-        ws["D5"] = "EOL-4"
+        ws["D5"] = eol_number
         ws["D5"].alignment = left_align
 
         # ===== MAIN TABLE =====
@@ -1970,9 +2026,15 @@ def finalize_run(table_widget, window_obj):
     if all(s == "PASS ✅" for s in all_status if s):
         pass_count += 1
         overall_result = "PASS"
+        niusb_set_high(ni_device_1, port=2, line=5)
+        niusb_set_low(ni_device_1, port=2, line=2)
+        # niusb_write_line(ni_device_1, 2, 2, pulse=True, wait=2)
     else:
         fail_count += 1
         overall_result = "FAIL"
+        niusb_set_high(ni_device_1, port=2, line=5) 
+        niusb_set_low(ni_device_1, port=2, line=3)
+        # niusb_write_line(ni_device_1, 2, 3, pulse=True, wait=2)
 
     yield_count = round((pass_count / total_count) * 100, 2)
 
@@ -2411,7 +2473,7 @@ class LoginWindow(QWidget):
         self.setPalette(palette)
 
         # Company branding
-        self.company_label = QLabel("Vipin")
+        self.company_label = QLabel("RAPIDISE")
         self.company_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         gradient_text = QLinearGradient(0, 0, 400, 0)
         gradient_text.setColorAt(0.0, QColor(0, 90, 160))
@@ -2627,7 +2689,8 @@ class ComPortSettingsScreen(QWidget):
         labels = [
             "ECALL COM:", "DASHCAM COM:", "DB Meter COM:", "FEASA COM:",
             "Camera IP:", "Camera Port:", "PSU IP:",
-            "NI Device 1 Serial Hex:", "NI Device 2 Serial Hex:", "NI Device 3 Serial Hex:"
+            "NI Device 1 Serial Hex:", "NI Device 2 Serial Hex:", "NI Device 3 Serial Hex:",
+            "EOL Number:"
         ]
 
         for idx, label in enumerate(labels):
@@ -2738,6 +2801,7 @@ class ComPortSettingsScreen(QWidget):
         global cam_sock, cam_ip, cam_port, ports_connected
         global psu_rm, keysight_psu, psu_ip
         global ni_device_1, ni_device_2, ni_device_3
+        global eol_number
 
         missing = []
         failed = []
@@ -2753,6 +2817,7 @@ class ComPortSettingsScreen(QWidget):
         ni1 = self.entries.get("ni_device_1_serial_hex").text().strip().upper()
         ni2 = self.entries.get("ni_device_2_serial_hex").text().strip().upper()
         ni3 = self.entries.get("ni_device_3_serial_hex").text().strip().upper()
+        eol_number_text = self.entries["eol_number"].text().strip()
 
         required_fields = {
             "ECALL COM": ecall_com,
@@ -2764,21 +2829,22 @@ class ComPortSettingsScreen(QWidget):
             "PSU IP": psu_ip,
             "NI Device 1 Serial": ni1,
             "NI Device 2 Serial": ni2,
-            "NI Device 3 Serial": ni3
+            "NI Device 3 Serial": ni3,
+            "EOL Number": eol_number_text
         }
 
         for name, val in required_fields.items():
             if not val:
                 missing.append(name)
 
-        # if missing:
-        #     QMessageBox.critical(
-        #         self,
-        #         "Missing Fields",
-        #         "⚠️ The following fields are mandatory and must be filled:\n\n" +
-        #         "\n".join(f"- {x}" for x in missing)
-        #     )
-        #     return
+        if missing:
+            QMessageBox.critical(
+                self,
+                "Missing Fields",
+                "⚠️ The following fields are mandatory and must be filled:\n\n" +
+                "\n".join(f"- {x}" for x in missing)
+            )
+            return
 
         # --- 2️⃣ Try Connecting COM Ports ---
         def try_serial(name, port, baud):
@@ -2794,6 +2860,7 @@ class ComPortSettingsScreen(QWidget):
         ser_dashcam = try_serial("DASHCAM", dashcam_com, BAUDRATE)
         ser_dbmeter = try_serial("DB METER", dbmeter_com, DB_METER_BAUDRATE)
         serfeasa = try_serial("FEASA", feasa_com, FEASABAUDRATE)
+        eol_number= eol_number_text
 
         # --- 3️⃣ Camera ---
         try:
@@ -2847,16 +2914,16 @@ class ComPortSettingsScreen(QWidget):
         except Exception as e:
             failed.append(f"NI DAQ: {e}")
 
-        # # --- 6️⃣ Final Mandatory Validation ---
-        # if missing or failed:
-        #     msg = "❌ Connection aborted! All devices are mandatory.\n\n"
-        #     if missing:
-        #         msg += "Missing:\n" + "\n".join(f"- {x}" for x in missing) + "\n\n"
-        #     if failed:
-        #         msg += "Failed:\n" + "\n".join(f"- {f}" for f in failed)
-        #     QMessageBox.critical(self, "Connection Error", msg)
-        #     ports_connected = False
-        #     return
+        # --- 6️⃣ Final Mandatory Validation ---
+        if missing or failed:
+            msg = "❌ Connection aborted! All devices are mandatory.\n\n"
+            if missing:
+                msg += "Missing:\n" + "\n".join(f"- {x}" for x in missing) + "\n\n"
+            if failed:
+                msg += "Failed:\n" + "\n".join(f"- {f}" for f in failed)
+            QMessageBox.critical(self, "Connection Error", msg)
+            ports_connected = False
+            return
 
         # --- ✅ All Devices Connected ---
         ports_connected = True
@@ -2963,12 +3030,12 @@ class BarcodeScreen(QWidget):
 
         if not (ecall and dashcam):
             QMessageBox.critical(self, "Error", "Both barcodes are required!")
-            # return
+            return
         
-        # if len(ecall)!= 40 or len(dashcam) != 21:
-        #     QMessageBox.critical(self, "Error", "Wrong barcodes!")
-        #     self.clear_barcodes()
-        #     return
+        if len(ecall)!= 40 or len(dashcam) != 21:
+            QMessageBox.critical(self, "Error", "Wrong barcodes!")
+            self.clear_barcodes()
+            return
 
         ECALL_BARCODE = ecall
         DASHCAM_BARCODE = dashcam
@@ -3869,11 +3936,652 @@ class MainScreen(QWidget):
 
 
 
+
+# class MainScreen(QWidget):
+#     def __init__(self, main_window=None):
+#         super().__init__()
+#         self.main_window = main_window
+#         self.setWindowTitle("Command Panel")
+#         self.setMinimumSize(1000, 600)
+#         self.loop_count_var = 0
+#         # Only port and line are fixed
+#         self.ni_daq_port = 2
+#         self.ni_daq_line = 1
+
+#         self.ni_daq_monitor_thread = None
+#         self.ni_daq_stop_event = threading.Event()
+#         self.run_allowed = False
+
+#         # HUD setup
+#         self.hud_timer = QTimer(self)
+#         self.hud_timer.timeout.connect(self.update_hud_timer)
+#         self.hud_start_time = None
+#         self.hud_running = False
+
+#         # Layout setup
+#         self.main_layout = QVBoxLayout(self)
+#         self.main_layout.setContentsMargins(10, 60, 10, 10)
+#         self.main_layout.setSpacing(10)
+
+#         self.top_panel()
+#         self.main_area()
+#         self.bottom_close_button()
+#         self.init_hud_display()
+#     # ============================================================
+#     # 🔹 NI DAQ Dynamic Handling + Real Monitoring + Auto Test Trigger
+#     # ============================================================
+    
+#     def update_ni_daq_serial(self, new_serial_hex):
+#         """Update NI DAQ serial dynamically from COM port UI."""
+#         if not new_serial_hex:
+#             print("⚠️ Empty NI DAQ serial provided — ignoring.")
+#             return
+    
+#         global ni_device_3
+#         ni_device_3 = new_serial_hex
+#         print(f"✅ NI DAQ serial updated dynamically: {ni_device_3}")
+    
+#         # Restart monitoring automatically if running
+#         if self.ni_daq_monitor_thread and self.ni_daq_monitor_thread.is_alive():
+#             print("🔁 Restarting NI DAQ monitor with new serial...")
+#             self.stop_ni_daq_monitor()
+#             self.start_ni_daq_monitor(ni_device_3, self.ni_daq_port, self.ni_daq_line)
+    
+    
+#     def showEvent(self, event):
+#         """Start NI DAQ monitoring when GUI is shown."""
+#         super().showEvent(event)
+    
+#         global ni_device_3
+#         if not ni_device_3:
+#             print("⚠️ NI Device 3 not yet connected (from COM Port screen)")
+#             return
+    
+#         print(f"🧩 Using NI Device Serial: {ni_device_3}")
+    
+#         if not self.ni_daq_monitor_thread or not self.ni_daq_monitor_thread.is_alive():
+#             self.start_ni_daq_monitor(ni_device_3, self.ni_daq_port, self.ni_daq_line)
+    
+    
+#     def start_ni_daq_monitor(self, serial_hex, port, line):
+#         """Start NI DAQ monitoring thread."""
+#         if self.ni_daq_monitor_thread and self.ni_daq_monitor_thread.is_alive():
+#             print("⚙️ NI DAQ monitoring already running.")
+#             return
+    
+#         if not serial_hex:
+#             print("❌ Serial Hex missing, cannot start DAQ.")
+#             return
+    
+#         serial_value = str(serial_hex).strip()
+#         self.ni_daq_stop_event.clear()
+#         self.ni_daq_monitor_thread = threading.Thread(
+#             target=self._ni_daq_monitor_loop,
+#             args=(serial_value, port, line),
+#             daemon=True
+#         )
+#         self.ni_daq_monitor_thread.start()
+#         print(f"🟢 NI DAQ monitoring started for serial: {serial_value}")
+    
+    
+#     def stop_ni_daq_monitor(self):
+#         """Stop NI DAQ monitoring."""
+#         if self.ni_daq_monitor_thread and self.ni_daq_monitor_thread.is_alive():
+#             print("🛑 Stopping NI DAQ monitor...")
+#             self.ni_daq_stop_event.set()
+#             self.ni_daq_monitor_thread.join(timeout=1.0)
+#             self.ni_daq_monitor_thread = None
+#             print("✅ NI DAQ monitor stopped.")
+    
+    
+#     def _ni_daq_monitor_loop(self, serial_hex, port, line):
+#         """Background NI DAQ monitoring logic with test trigger."""
+#         try:
+#             from nidaqmx import Task
+#             from nidaqmx.system import system
+#             import nidaqmx
+    
+#             serial_decimal = int(serial_hex, 16)
+#             system = System.local()
+#             dev = next((d for d in system.devices if getattr(d, "serial_num", None) == serial_decimal), None)
+    
+#             if not dev:
+#                 print(f"❌ Device with serial {serial_hex} not found.")
+#                 return
+    
+#             line_name = f"{dev.name}/port{port}/line{line}"
+#             print(f"🔍 Monitoring {line_name} (Digital Input Trigger Mode)")
+    
+#             with Task() as task:
+#                 task.di_channels.add_di_chan(line_name)
+#                 prev_state = bool(task.read())
+#                 print(f"Initial State Detected: {'HIGH' if prev_state else 'LOW'} (ignored)")
+    
+#                 while not self.ni_daq_stop_event.is_set():
+#                     state = bool(task.read())
+    
+#                     # Rising Edge (Voltage Applied)
+#                     if not prev_state and state:
+#                         print("⚡ EXECUTED: Voltage Applied / Triggered ✅")
+    
+#                     # Falling Edge (Voltage Removed)
+#                     if prev_state and not state:
+#                         print("🔴 RESET: Voltage Removed ⛔")
+    
+#                         if self.run_allowed:
+#                             # Disable further triggers until user resets
+#                             self.run_allowed = False
+#                             print("▶️ Calling Run All Tests (from DAQ trigger)...")
+#                             QTimer.singleShot(0, self._run_all_tests_thread)
+#                             time.sleep(0.5)
+#                         else:
+#                             print("⚠️ Run not allowed yet, ignoring DAQ trigger.")
+    
+#                     prev_state = state
+#                     time.sleep(0.05)
+    
+#         except Exception as e:
+#             print(f"NI DAQ Monitor Error: {e}")
+    
+    
+#     def init_hud_display(self):
+#         # Show initial "ready" display on HUD
+#         self.hud_display.setText("Ready. Elapsed: 00:00:00.0")
+
+#     def start_hud_timer(self):
+#         self.hud_start_time = time.time()
+#         self.hud_timer.start(100)        # 100 ms update interval
+#         self.hud_running = True
+#         self.hud_display.setText("Elapsed: 00:00:00.0")
+    
+#     def update_hud_timer(self):
+#         if self.hud_start_time is None:
+#             return
+#         elapsed = time.time() - self.hud_start_time
+#         mins, secs = divmod(elapsed, 60)
+#         secs_int = int(secs)
+#         millis = int((secs - secs_int) * 10)
+#         timer_text = f"Elapsed: {int(mins):02d}:{secs_int:02d}:{millis}"
+#         self.hud_display.setText(timer_text)
+
+    
+    
+
+    
+#     def finalize_hud_timer(self):
+#         self.hud_timer.stop()
+#         self.hud_running = False
+#         total_elapsed = time.time() - self.hud_start_time if self.hud_start_time else 0
+#         mins, secs = divmod(total_elapsed, 60)
+#         secs_int = int(secs)
+#         millis = int((secs - secs_int) * 10)
+#         self.hud_display.setText(f"Run Complete: {int(mins):02d}:{secs_int:02d}:{millis}")
+
+#     def reset_hud_timer(self):
+#         self.hud_timer.stop()
+#         self.hud_running = False
+#         self.hud_start_time = None
+#         self.init_hud_display()
+
+
+#     def _run_all_tests_thread(self):
+#         self.run_allowed = False  # disable until user resets/adds new tab
+#         self.start_hud_timer()
+#         threading.Thread(target=lambda: run_all_tests(active_table, self.status_var, self, self.main_window), daemon=True).start()
+    
+#     def run_selected(self):
+#         sel = active_table.selectionModel().selectedRows()
+#         if not sel:
+#             print("No selection")
+#             return
+#         row = sel[0].row()
+#         # self.start_hud_timer()               # Start HUD timer for run selected
+#         threading.Thread(target=lambda: run_test_case(row,active_table, self.status_var), daemon=True).start()
+    
+
+#     def start_loop(self, limit=0):
+#         stop_event.clear()
+#         self.start_hud_timer()               # Ensure HUD timer starts for loop
+#         threading.Thread(target=self.test_loop, args=(limit,), daemon=True).start()
+
+#     def restart_tests(self):
+#         stop_event.set()
+#         stop_event.clear()
+#         self.reset_hud_timer()      # Clear HUD on restart
+#         self.add_new_tab()
+#         self.status_var.setText("Restarted: New run table ready")
+
+#     def paintEvent(self, event):
+#         painter = QPainter(self)
+#         rect = self.rect()
+#         gradient = QLinearGradient(0, 0, 0, rect.height())
+#         gradient.setColorAt(0.0, QColor(0, 230, 255))
+#         gradient.setColorAt(0.2, QColor(10, 255, 140))
+#         gradient.setColorAt(0.4, QColor(0, 255, 220, 180))
+#         gradient.setColorAt(0.6, QColor(10, 10, 10))
+#         gradient.setColorAt(0.8, QColor(240, 240, 240))
+#         gradient.setColorAt(1.0, QColor(0, 140, 255))
+#         painter.fillRect(rect, gradient)
+
+
+
+#     def top_panel(self):
+#         top = QFrame()
+#         top.setStyleSheet("background-color: #0d1321;")
+#         top.setFixedHeight(70)
+    
+#         layout = QHBoxLayout(top)
+#         layout.setContentsMargins(10, 5, 10, 5)
+#         layout.setSpacing(20)
+    
+#         # Left vertical panel for Command label and HUD
+#         left_panel = QVBoxLayout()
+#         left_panel.setSpacing(5)
+    
+#         lbl = QLabel("Command Panel")
+#         lbl.setStyleSheet("color: #00d1ff; font-weight:bold; font-size:18px;")
+#         left_panel.addWidget(lbl)
+    
+#         # HUD small screen
+#         self.hud_display = QLabel("HUD Display")
+#         self.hud_display.setStyleSheet("""
+#             background-color: #021f2f;
+#             color: #00ffa0;
+#             font-size: 12px;
+#             font-weight: bold;
+#             border: 1px solid #00d1ff;
+#             border-radius: 5px;
+#             padding: 5px 10px;
+#             min-width: 180px;
+#             max-width: 250px;
+#         """)
+#         self.hud_display.setFixedHeight(30)
+#         self.hud_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+#         left_panel.addWidget(self.hud_display)
+    
+#         layout.addLayout(left_panel)
+#         layout.addStretch()
+    
+#         # --- 🟢 NI DAQ Button ---
+#         self.ni_daq_button = QPushButton("NI DAQ")
+#         self.ni_daq_button.setFixedSize(80, 30)
+#         self.ni_daq_button.setStyleSheet("background-color: #007a3d; color: white; font-weight:bold;")
+#         self.ni_daq_button.clicked.connect(self.open_ni_daq_controller)
+#         layout.addWidget(self.ni_daq_button)
+    
+#         # --- 🔵 PSU Button ---
+#         self.psu_button = QPushButton("PSU")
+#         self.psu_button.setFixedSize(80, 30)
+#         self.psu_button.setStyleSheet("background-color: #0059b3; color: white; font-weight:bold;")
+#         self.psu_button.clicked.connect(self.open_psu_controller)
+#         layout.addWidget(self.psu_button)
+    
+#         self.main_layout.addWidget(top)
+    
+    
+#     def open_psu_controller(self):
+#         if not hasattr(self, 'psu_window'):
+#             self.psu_window = PSUController()
+#         self.psu_window.show()
+#         self.psu_window.raise_()
+#         self.psu_window.activateWindow()
+    
+    
+#     def open_ni_daq_controller(self):
+#         """Opens NI USB DAQ Control window."""
+#         if not hasattr(self, 'ni_daq_window'):
+#             self.ni_daq_window = NIDAQController()
+#         self.ni_daq_window.show()
+#         self.ni_daq_window.raise_()
+#         self.ni_daq_window.activateWindow()
+
+
+#     def main_area(self):
+#         area = QHBoxLayout()
+    
+#         # ---------------- LEFT FRAME ----------------
+#         self.left_frame = QFrame()
+#         self.left_frame.setStyleSheet("""
+#             QFrame {
+#                 background-color: rgba(18, 27, 43, 180);
+#                 border-radius: 15px;
+#                 border: 1px solid #00ffff;
+#             }
+#         """)
+    
+#         effect_left = QGraphicsDropShadowEffect()
+#         effect_left.setBlurRadius(40)
+#         effect_left.setColor(QColor(0, 255, 255, 180))
+#         effect_left.setXOffset(0)
+#         effect_left.setYOffset(10)
+#         self.left_frame.setGraphicsEffect(effect_left)
+    
+#         # ✅ Plain container (replaced QTabWidget)
+#         left_layout = QVBoxLayout(self.left_frame)
+#         self.table_container = QWidget()
+#         self.table_layout = QVBoxLayout(self.table_container)
+#         left_layout.addWidget(self.table_container)
+    
+#         # ✅ Add single table (no duplicate)
+#         if hasattr(self, "table_layout"):
+#             self.add_new_tab()
+    
+#         # ✅ Controls panel below table
+#         self.controls_panel(left_layout)
+#         area.addWidget(self.left_frame, 3)
+    
+#         # ---------------- RIGHT FRAME ----------------
+#         self.right_frame = QFrame()
+#         self.right_frame.setStyleSheet("""
+#             QFrame {
+#                 background-color: rgba(19, 41, 75, 180);
+#                 border-radius: 15px;
+#                 border: 1px solid #00ffd5;
+#             }
+#         """)
+    
+#         effect_right = QGraphicsDropShadowEffect()
+#         effect_right.setBlurRadius(40)
+#         effect_right.setColor(QColor(0, 255, 213, 180))
+#         effect_right.setXOffset(0)
+#         effect_right.setYOffset(10)
+#         self.right_frame.setGraphicsEffect(effect_right)
+    
+#         right_layout = QVBoxLayout(self.right_frame)
+#         self.right = right_layout
+#         self.right_counters()
+#         area.addWidget(self.right_frame, 1)
+    
+#         # ✅ Add to main layout
+#         self.main_layout.addLayout(area)
+    
+#         # ✅ Animate both glow effects
+#         self.animate_glow(effect_left)
+#         self.animate_glow(effect_right)
+
+#     def animate_glow(self, effect):
+#         anim = QPropertyAnimation(effect, b"color")
+#         anim.setDuration(2000)
+#         anim.setLoopCount(-1)
+#         anim.setEasingCurve(QEasingCurve.Type.InOutSine)
+
+#         start_color = effect.color()
+#         end_color = QColor(start_color.red(), start_color.green(), start_color.blue(), 255)
+
+#         anim.setStartValue(start_color)
+#         anim.setEndValue(end_color)
+#         anim.setDirection(QPropertyAnimation.Direction.Forward)
+
+#         def on_value_changed(value):
+#             effect.setColor(value)
+
+#         anim.valueChanged.connect(on_value_changed)
+#         anim.start()
+
+#         if not hasattr(self, "_glow_animations"):
+#             self._glow_animations = []
+#         self._glow_animations.append(anim)
+
+
+
+#     def add_new_tab(self):
+#         self.reset_hud_timer()
+#         global tab_counter, active_table
+#         if 'tab_counter' not in globals():
+#             tab_counter = 0
+    
+#         # ✅ Remove previous table if already added
+#         if hasattr(self, "table_layout"):
+#             while self.table_layout.count():
+#                 child = self.table_layout.takeAt(0)
+#                 if child.widget():
+#                     child.widget().deleteLater()
+    
+#         # ✅ Create new table
+#         table = QTableWidget()
+#         table.setColumnCount(6)
+#         table.setHorizontalHeaderLabels(["NAME", "MINIMUM", "OUTPUT", "MAXIMUM", "STATUS", "TIME(s)"])
+#         table.setStyleSheet("""
+#             QTableWidget {
+#                 background-color: #10182e;
+#                 color: white;
+#                 gridline-color: #00ffff;
+#                 border: none;
+#                 selection-background-color: #00ffff;
+#                 selection-color: black;
+#             }
+#             QHeaderView::section {
+#                 background-color: #16213e;
+#                 color: #00ffff;
+#                 border: 1px solid #00ffff;
+#                 padding: 4px;
+#             }
+#         """)
+    
+#         from PyQt6.QtWidgets import QTableWidgetItem
+#         for tc in TEST_CASES:
+#             name = tc.get("name", "")
+#             expected = tc.get("expected", "")
+#             output = tc.get("output", "")
+#             status = tc.get("status", "")
+#             time_taken = tc.get("time", "")
+    
+
+#             min_val = tc.get("min") if tc.get("min") is not None else (tc.get("min_limit") if tc.get("min_limit") is not None else tc.get("min_val"))
+#             max_val = tc.get("max") if tc.get("max") is not None else (tc.get("max_limit") if tc.get("max_limit") is not None else tc.get("max_val"))
+
+    
+#             # --- Combine logic for min/max with expected ---
+#             if min_val is not None and max_val is not None and expected:
+#                 minimum_text = f"{min_val}\nExpected: {expected}"
+#                 maximum_text = f"{max_val}\nExpected: {expected}"
+#             elif min_val is not None and max_val is not None:
+#                 minimum_text = str(min_val)
+#                 maximum_text = str(max_val)
+#             elif expected:
+#                 minimum_text = f"Expected: {expected}"
+#                 maximum_text = f"Expected: {expected}"
+#             else:
+#                 minimum_text = ""
+#                 maximum_text = ""
+    
+#             # --- Collect dbmeter_checks lines ---
+#             db_min_lines, db_max_lines = [], []
+#             if "dbmeter_checks" in tc:
+#                 for check in tc["dbmeter_checks"]:
+#                     cmin = check.get("min")
+#                     cmax = check.get("max")
+#                     label = check.get("label", "")
+#                     if cmin is not None:
+#                         db_min_lines.append(f"{cmin} ({label})")
+#                     if cmax is not None:
+#                         db_max_lines.append(f"{cmax} ({label})")
+    
+#             # --- Collect value_ranges lines with Red/Green/Blue labels ---
+#             range_min_lines, range_max_lines = [], []
+#             if "value_ranges" in tc:
+#                 labels = ["Red", "Green", "Blue"]
+#                 for i, vr in enumerate(tc["value_ranges"]):
+#                     if isinstance(vr, (list, tuple)) and len(vr) == 2:
+#                         cmin, cmax = vr
+#                         color_label = labels[i % len(labels)]
+#                         range_min_lines.append(f"{cmin} ({color_label})")
+#                         range_max_lines.append(f"{cmax} ({color_label})")
+    
+#             # --- Merge all min/max lines ---
+#             min_lines = [minimum_text] if minimum_text else []
+#             max_lines = [maximum_text] if maximum_text else []
+    
+#             if db_min_lines:
+#                 min_lines.extend(db_min_lines)
+#             if db_max_lines:
+#                 max_lines.extend(db_max_lines)
+#             if range_min_lines:
+#                 min_lines.extend(range_min_lines)
+#             if range_max_lines:
+#                 max_lines.extend(range_max_lines)
+    
+#             min_combined = "\n".join(min_lines)
+#             max_combined = "\n".join(max_lines)
+    
+#             # --- Add main test row ---
+#             row = table.rowCount()
+#             table.insertRow(row)
+    
+#             table.setItem(row, 0, QTableWidgetItem(name))
+#             table.setItem(row, 1, QTableWidgetItem(min_combined))
+#             table.setItem(row, 2, QTableWidgetItem(str(output)))
+#             table.setItem(row, 3, QTableWidgetItem(max_combined))
+#             table.setItem(row, 4, QTableWidgetItem(status))
+#             table.setItem(row, 5, QTableWidgetItem(str(time_taken)))
+    
+#             # --- Keep daq_steps as before ---
+#             if "daq_steps" in tc:
+#                 for step in tc["daq_steps"]:
+#                     cmin = step.get("min")
+#                     cmax = step.get("max")
+#                     if cmin is not None or cmax is not None:
+#                         sub_row = table.rowCount()
+#                         table.insertRow(sub_row)
+#                         table.setItem(sub_row, 0, QTableWidgetItem(""))
+#                         table.setItem(sub_row, 1, QTableWidgetItem(str(cmin if cmin is not None else "")))
+#                         table.setItem(sub_row, 2, QTableWidgetItem(""))
+#                         table.setItem(sub_row, 3, QTableWidgetItem(str(cmax if cmax is not None else "")))
+#                         table.setItem(sub_row, 4, QTableWidgetItem(""))
+#                         table.setItem(sub_row, 5, QTableWidgetItem(""))
+    
+#         # ✅ Table behavior + word wrap
+#         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+#         table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+#         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+#         table.setWordWrap(True)
+#         table.resizeRowsToContents()
+#         table.itemChanged.connect(lambda: table.resizeRowsToContents())
+    
+#         # ✅ Column widths
+#         column_widths = [200, 150, 150, 150, 100, 100]
+#         for col, width in enumerate(column_widths):
+#             table.setColumnWidth(col, width)
+    
+#         header = table.horizontalHeader()
+#         header.setStretchLastSection(True)
+    
+#         # ✅ Add new table cleanly
+#         if hasattr(self, "table_layout"):
+#             self.table_layout.addWidget(table)
+    
+#         # ✅ Keep reference
+#         active_table = table
+#         tab_counter += 1
+
+
+
+
+
+#     def controls_panel(self, parent_layout):
+#         self.status_var = QLabel("")
+#         self.status_var.setStyleSheet("color:#00ffd5; font-weight:bold;")
+#         parent_layout.addWidget(self.status_var)
+
+#         btn_layout = QHBoxLayout()
+#         parent_layout.addLayout(btn_layout)
+
+#         def glassy_button(text, func, color_mode='gold'):
+#             b = GlassyNeonButton(text, color_mode=color_mode)
+#             b.clicked = func
+#             b.setMinimumWidth(110)
+#             btn_layout.addWidget(b)
+#             return b
+
+#         glassy_button("Run Selected", self.run_selected)
+#         glassy_button("Run All", self._run_all_tests_thread)
+#         glassy_button("STOP", self.stop_tests, color_mode='silver')
+#         glassy_button("Restart", self.restart_tests, color_mode='gold')
+#         glassy_button("Loop", self.start_loop, color_mode='gold')
+#         glassy_button("Generate Report", lambda: [generate_report(active_table), finalize_run(active_table, self)], color_mode='silver')
+#         btn_layout.addStretch()
+
+#         loop_layout = QHBoxLayout()
+#         lbl = QLabel("Current Run:")
+#         lbl.setStyleSheet("color:white;")
+#         self.loop_display = QLabel(str(self.loop_count_var))
+#         self.loop_display.setStyleSheet("color:white; font-weight:bold;")
+#         loop_layout.addWidget(lbl)
+#         loop_layout.addWidget(self.loop_display)
+#         loop_layout.addStretch()
+#         parent_layout.addLayout(loop_layout)
+
+#     def stop_tests(self):
+#         stop_event.set()
+#         self.status_var.setText("Stopped by user")
+
+#     def refresh_counters(self):
+#         global total_count, pass_count, fail_count, yield_count
+#         self.label_total.setText(str(total_count))
+#         self.label_pass.setText(str(pass_count))
+#         self.label_fail.setText(str(fail_count))
+#         self.label_yield.setText(f"{yield_count}%")
+
+#     def test_loop(self, limit=0):
+#         count = 1
+#         while not stop_event.is_set() and (limit == 0 or count <= limit):
+#             run_all_tests(active_table, self.status_var, self)
+#             count += 1
+#             QTimer.singleShot(0, lambda: self.status_var.setText(f"Run {count} of {'∞' if limit==0 else limit}"))
+#             self.loop_count_var = count
+#             self.loop_display.setText(str(self.loop_count_var))
+#             generate_report(active_table)
+#             finalize_run(active_table, self)
+#             self.add_new_tab()
+#             for _ in range(5):
+#                 if stop_event.is_set():
+#                     break
+#                 time.sleep(1)
+#             self.status_var.setText("Restarting Loop...")
+#         self.status_var.setText("Loop finished or stopped.")
+
+#     def right_counters(self):
+#         global total_count, pass_count, fail_count, yield_count
+
+#         def counter_label(text, var):
+#             lbl_title = QLabel(text.upper())
+#             lbl_title.setStyleSheet("color:#00ffd5; font-weight:bold;")
+#             lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+#             self.right.addWidget(lbl_title)
+#             lbl_val = QLabel(str(var))
+#             lbl_val.setStyleSheet("background-color:#13294b; color:#00d1ff; font-size:18px; font-weight:bold;")
+#             lbl_val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+#             lbl_val.setFixedHeight(40)
+#             self.right.addWidget(lbl_val)
+#             return lbl_val
+
+#         self.label_total = counter_label("Total", total_count)
+#         self.label_pass = counter_label("Pass", pass_count)
+#         self.label_fail = counter_label("Fail", fail_count)
+#         self.label_yield = counter_label("Yield", yield_count)
+
+#         self.btn_reset = GlassyNeonButton("Reset Counters", color_mode='silver')
+#         self.btn_reset.clicked = self.reset_counters
+#         self.right.addWidget(self.btn_reset)
+
+#     def reset_counters(self):
+#         global total_count, pass_count, fail_count, yield_count
+#         total_count = pass_count = fail_count = yield_count = 0
+#         self.refresh_counters()
+#         self.status_var.setText("Counters reset to 0")
+#         save_counters()
+
+#     def bottom_close_button(self):
+#         self.btn_close = GlassyNeonButton("Close App", color_mode='gold')
+#         self.btn_close.clicked = QApplication.instance().quit
+#         self.main_layout.addWidget(self.btn_close, alignment=Qt.AlignmentFlag.AlignCenter)
+
+
 class MainWindow(QMainWindow):
     load_counters() #for counter load of pass fail or inn sbke 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Vipin App")
+        self.setWindowTitle("RAPIDISE App")
         self.resize(800, 500)
 
         self.stack = QStackedWidget()
